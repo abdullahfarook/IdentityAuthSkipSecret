@@ -22,11 +22,20 @@ builder.Services.AddAuthorization(options =>
 {
     options.AddPolicy("ExtensionPolicy", policy =>
     {
-        // policy.RequireAuthenticatedUser();
-        // policy.RequireClaim("ChromeExtension");
-        // header must contain secret 
-        policy.Requirements.Add(new AuthenticatedOrSecretHeaderRequirement());
-        
+       // check if header contains secret
+       policy.RequireAssertion(context =>
+       {
+           if (context.User.Identity?.IsAuthenticated ?? false)
+           {
+               return true;
+           }
+           var httpContext = context.Resource as HttpContext;
+           var secret = httpContext?.Request.Headers["Secret"];
+           var exist = secret is not null && secret?.ToString() == "VerySecretValue";
+           httpContext!.Items["secretExist"] = exist.ToString();
+           return exist;
+       });
+
     });
 });
 
@@ -52,6 +61,19 @@ app.UseStaticFiles();
 app.UseRouting();
 
 app.UseAuthorization();
+// middleware to check browser header
+app.Use( (httpContext, next) =>
+{
+    var isFromBrowser= httpContext.Request.Headers["User-Agent"].ToString().Contains("Mozilla");
+    var secretExist = httpContext.Items["secretExist"]?.ToString() == "True";
+    if(isFromBrowser == false && secretExist == false)
+    {
+        httpContext!.Response.StatusCode = 401;
+        // short circuit request pipeline
+        return httpContext.Response.CompleteAsync();
+    }
+    return next();
+});
 
 app.MapRazorPages();
 // register controllers
@@ -76,23 +98,22 @@ public class AuthenticatedOrSecretHeaderHandler : AuthorizationHandler<Authentic
             {
                  context.Succeed(requirement);
             }
-            return Task.CompletedTask; 
+         
         }
+        return Task.CompletedTask; 
         // Return 401 Unauthorized status code for non-browser requests
         var header = httpContext.Request;
         var secret = header?.Headers["Secret"];
         var exist = secret is not null && secret.ToString() == "VerySecretValue";
         if (!exist)
         {
+            
             httpContext.Response.StatusCode = 401;
             // short circuit request pipeline
-            httpContext.Response.CompleteAsync();
+            
+            return httpContext.Response.CompleteAsync();
         }
-        else
-        {
-            context.Succeed(requirement);
-        }
-        
+        context.Succeed(requirement);
         return Task.CompletedTask;
     }
 }

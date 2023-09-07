@@ -11,7 +11,7 @@ namespace WebApp
     [Route("api/[controller]")]
     [ApiController]
     [Authorize("ExtensionPolicy")]
-    public class ChromeExtensionController : ControllerBase
+    public class BrowserExtensionController : ControllerBase
     {
         // GET: api/ChromeExtension
         [HttpGet]
